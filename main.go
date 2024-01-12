@@ -56,9 +56,10 @@ type resourceTuple struct {
 }
 
 func createScript(name string, resources []resourceTuple) error {
-	lines := make([]string, len(resources))
+	lines := make([]string, len(resources)*2)
 	for i, r := range resources {
-		lines[i] = fmt.Sprintf("terraform import %s.%s %s", r.Type, r.Name, r.ID)
+		lines[i] = fmt.Sprintf("terraform state rm %s.%s", r.Type, r.Name)
+		lines[len(resources)+i] = fmt.Sprintf("terraform import %s.%s %s", r.Type, r.Name, r.ID)
 	}
 
 	return os.WriteFile(name, []byte(strings.Join(lines, "\n")), 0744)
@@ -86,6 +87,9 @@ func resources(filename string) ([]resourceTuple, error) {
 
 	var resources []resourceTuple
 	for _, r := range state.Resources {
+		if r.Mode == "data" {
+			continue
+		}
 		for _, inst := range r.Instances {
 			rawID, ok := inst.Attributes["id"]
 			if !ok {
