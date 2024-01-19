@@ -18,6 +18,7 @@ import (
 func main() {
 	tfstate := flag.String("tfstate", "terraform.tfstate", "tfstate file to create import statements from. If empty, looks in the current directory for 'terraform.tfstate'")
 	script := flag.String("out", "", "Import script name to produce. If empty, prints to stdout.")
+	includeRemove := flag.Bool("include-remove", true, "Include `terraform rm` statements to alter state in place.")
 	flag.Parse()
 
 	resources, err := resources(*tfstate)
@@ -43,7 +44,7 @@ func main() {
 		out = os.Stdout
 	}
 
-	err = output(out, ordered)
+	err = output(out, ordered, *includeRemove)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -182,14 +183,24 @@ func (r resourceTuple) address() string {
 	return fmt.Sprintf("%s.%s", r.Type, r.Name)
 }
 
-func output(out io.Writer, resources []*resourceTuple) error {
-	lines := make([]string, len(resources)*2)
-	for i, r := range resources {
-		lines[len(resources)-1-i] = fmt.Sprintf("terraform state rm '%s'", r.address())
-		lines[len(resources)+i] = fmt.Sprintf("terraform import '%s' %s", r.address(), r.ID)
+func output(out io.Writer, resources []*resourceTuple, includeRemove bool) error {
+	var removes []string
+	if includeRemove {
+		removes = make([]string, len(resources))
+		for i, r := range resources {
+			removes[len(removes)-1-i] = fmt.Sprintf("terraform state rm '%s'", r.address())
+		}
+		_, err := out.Write([]byte(strings.Join(removes, "\n") + "\n"))
+		if err != nil {
+			return err
+		}
 	}
 
-	_, err := out.Write([]byte(strings.Join(lines, "\n") + "\n"))
+	imports := make([]string, len(resources))
+	for i, r := range resources {
+		imports[i] = fmt.Sprintf("terraform import '%s' %s", r.address(), r.ID)
+	}
+	_, err := out.Write([]byte(strings.Join(imports, "\n") + "\n"))
 	return err
 }
 
