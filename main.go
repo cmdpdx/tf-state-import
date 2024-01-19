@@ -7,8 +7,10 @@ import (
 	"io"
 	"log"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"golang.org/x/exp/maps"
 )
@@ -54,6 +56,12 @@ func main() {
 type resourceOrdering struct {
 	m       map[string]resourceTuple
 	ordered []*resourceTuple
+
+	checking map[string]interface{}
+	done     map[string]interface{}
+
+	once sync.Once
+	keys []string
 }
 
 func order(resources map[string]resourceTuple) []*resourceTuple {
@@ -63,41 +71,78 @@ func order(resources map[string]resourceTuple) []*resourceTuple {
 	return ro.order()
 }
 
-// order walks the dependencies of resources in a DFS search to produce an ordered
-// slice from least-dependent to most-dependent resource. 
-func (rm *resourceOrdering) order() []*resourceTuple {
-	done := make(map[string]interface{}, len(rm.m))
-	checking := make(map[string]interface{}, len(rm.m))
-	rm.ordered = make([]*resourceTuple, 0, len(rm.m))
+// order walks the dependencies of resources in a depth-first search to produce an ordered
+// slice from least-dependent to most-dependent resource.
+func (ro *resourceOrdering) order() []*resourceTuple {
+	ro.done = make(map[string]interface{}, len(ro.m))
+	ro.checking = make(map[string]interface{}, len(ro.m))
+	ro.ordered = make([]*resourceTuple, 0, len(ro.m))
 
 	// Order resources by name, by default.
-	keys := maps.Keys(rm.m)
-	sort.Strings(keys)
-
-	for _, key := range keys {
-		rm.visit(rm.m[key], checking, done)
+	for _, key := range ro.getKeys() {
+		ro.visit(ro.m[key])
 	}
 
-	return rm.ordered
+	return ro.ordered
 }
 
-func (rm *resourceOrdering) visit(r resourceTuple, checking map[string]interface{}, done map[string]interface{}) {
-	if _, found := done[r.identifier()]; found {
+func (ro *resourceOrdering) getKeys() []string {
+	ro.once.Do(func() {
+		ro.keys = maps.Keys(ro.m)
+		sort.Strings(ro.keys)
+	})
+	return ro.keys
+}
+
+func (ro *resourceOrdering) collectionResources(address string) []resourceTuple {
+	rs := make([]resourceTuple, 0, 4)
+	re, err := regexp.Compile(fmt.Sprintf(`%s\[".+"\]`, address))
+	if err != nil {
+		log.Println("failed to compile regex, can't find collection resources:", address)
+		return nil
+	}
+
+	for _, key := range ro.getKeys() {
+		if re.MatchString(key) {
+			rs = append(rs, ro.m[key])
+		}
+	}
+	return rs
+}
+
+func (ro *resourceOrdering) visit(r resourceTuple) {
+	if _, found := ro.done[r.address()]; found {
 		return
 	}
-	if _, found := checking[r.identifier()]; found {
+	if _, found := ro.checking[r.address()]; found {
 		log.Fatalf("cycle detected at: %#v", r)
 	}
 
-	checking[r.identifier()] = struct{}{}
+	ro.checking[r.address()] = struct{}{}
 
 	for _, d := range r.Dependencies {
-		rm.visit(rm.m[d], checking, done)
+		// Skip data dependencies.
+		if strings.HasPrefix(d, "data.") {
+			continue
+		}
+		// Collections dependencies do not include their index key
+		// Look for all resources matching `{d}\[".+"\]`
+		// e.g if the dependency is my_resource.name, look for all resources
+		// that match my_resource.name["key"]
+		if _, ok := ro.m[d]; !ok {
+			deps := ro.collectionResources(d)
+
+			for _, dep := range deps {
+				ro.visit(dep)
+			}
+		} else {
+			ro.visit(ro.m[d])
+		}
 	}
 
-	delete(checking, r.identifier())
-	done[r.identifier()] = struct{}{}
-	rm.ordered = append(rm.ordered, &r)
+	delete(ro.checking, r.address())
+	ro.done[r.address()] = struct{}{}
+	ro.ordered = append(ro.ordered, &r)
 }
 
 type state struct {
@@ -115,26 +160,33 @@ type resource struct {
 type resourceInstance struct {
 	Attributes   map[string]interface{}
 	Dependencies []string
+	IndexKey     string `json:"index_key"`
 }
 
 type resourceTuple struct {
 	Type         string
 	Name         string
 	ID           string
+	IndexKey     string
 	Dependencies []string
 }
 
-// identifier is the unique friendly name of a resource as [Type].[Name].
-// This identifier matches the format found in Dependencies.
-func (r resourceTuple) identifier() string {
+// address is the unique friendly name of a resource as {Type}.{Name}.
+// This address matches the format found in Dependencies.
+// resources defined with `for_each` have an index key and are
+// addressed as {Type}.{Name}["{Index key}"]
+func (r resourceTuple) address() string {
+	if r.IndexKey != "" {
+		return fmt.Sprintf("%s.%s[\"%s\"]", r.Type, r.Name, r.IndexKey)
+	}
 	return fmt.Sprintf("%s.%s", r.Type, r.Name)
 }
 
 func output(out io.Writer, resources []*resourceTuple) error {
 	lines := make([]string, len(resources)*2)
 	for i, r := range resources {
-		lines[len(resources)-1-i] = fmt.Sprintf("terraform state rm %s.%s", r.Type, r.Name)
-		lines[len(resources)+i] = fmt.Sprintf("terraform import %s.%s %s", r.Type, r.Name, r.ID)
+		lines[len(resources)-1-i] = fmt.Sprintf("terraform state rm '%s'", r.address())
+		lines[len(resources)+i] = fmt.Sprintf("terraform import '%s' %s", r.address(), r.ID)
 	}
 
 	_, err := out.Write([]byte(strings.Join(lines, "\n") + "\n"))
@@ -182,9 +234,10 @@ func resources(filename string) (map[string]resourceTuple, error) {
 				Type:         r.Type,
 				Name:         r.Name,
 				ID:           id,
+				IndexKey:     inst.IndexKey,
 				Dependencies: inst.Dependencies,
 			}
-			resources[t.identifier()] = t
+			resources[t.address()] = t
 		}
 	}
 
