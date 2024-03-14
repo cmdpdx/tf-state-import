@@ -161,14 +161,14 @@ type resource struct {
 type resourceInstance struct {
 	Attributes   map[string]interface{}
 	Dependencies []string
-	IndexKey     string `json:"index_key"`
+	IndexKey     interface{} `json:"index_key"`
 }
 
 type resourceTuple struct {
 	Type         string
 	Name         string
 	ID           string
-	IndexKey     string
+	IndexKey     interface{}
 	Dependencies []string
 }
 
@@ -177,8 +177,15 @@ type resourceTuple struct {
 // resources defined with `for_each` have an index key and are
 // addressed as {Type}.{Name}["{Index key}"]
 func (r resourceTuple) address() string {
-	if r.IndexKey != "" {
-		return fmt.Sprintf("%s.%s[\"%s\"]", r.Type, r.Name, r.IndexKey)
+	if r.IndexKey != nil {
+		switch v := r.IndexKey.(type) {
+		case int:
+			return fmt.Sprintf("%s.%s[%d]", r.Type, r.Name, v)
+		case string:
+			return fmt.Sprintf("%s.%s[\"%s\"]", r.Type, r.Name, v)
+		default:
+			return fmt.Sprintf("%s.%s", r.Type, r.Name)
+		}
 	}
 	return fmt.Sprintf("%s.%s", r.Type, r.Name)
 }
