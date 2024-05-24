@@ -1,29 +1,30 @@
-package main
+package resources
 
 import (
-	"github.com/google/go-cmp/cmp"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func Test_resourceOrdering_order(t *testing.T) {
 	tests := []struct {
 		name string
 		ro   resourceOrdering
-		want []*resourceTuple
+		want []*Tuple
 	}{{
 		name: "empty",
 		ro:   resourceOrdering{},
-		want: []*resourceTuple{},
+		want: []*Tuple{},
 	}, {
 		name: "no dependencies",
 		ro: resourceOrdering{
-			m: map[string]resourceTuple{
+			m: map[string]Tuple{
 				"foo": {Name: "foo"},
 				"bar": {Name: "bar"},
 				"baz": {Name: "baz"},
 			},
 		},
-		want: []*resourceTuple{
+		want: []*Tuple{
 			{Name: "bar"},
 			{Name: "baz"},
 			{Name: "foo"},
@@ -31,7 +32,7 @@ func Test_resourceOrdering_order(t *testing.T) {
 	}, {
 		name: "one dependency",
 		ro: resourceOrdering{
-			m: map[string]resourceTuple{
+			m: map[string]Tuple{
 				"t.foo": {
 					Type: "t",
 					Name: "foo",
@@ -47,7 +48,7 @@ func Test_resourceOrdering_order(t *testing.T) {
 				},
 			},
 		},
-		want: []*resourceTuple{
+		want: []*Tuple{
 			{
 				Type: "t",
 				Name: "foo",
@@ -63,7 +64,7 @@ func Test_resourceOrdering_order(t *testing.T) {
 	}, {
 		name: "multiple dependencies on one resource",
 		ro: resourceOrdering{
-			m: map[string]resourceTuple{
+			m: map[string]Tuple{
 				"t.foo": {
 					Type: "t",
 					Name: "foo",
@@ -79,7 +80,7 @@ func Test_resourceOrdering_order(t *testing.T) {
 				},
 			},
 		},
-		want: []*resourceTuple{
+		want: []*Tuple{
 			{
 				Type: "t",
 				Name: "foo",
@@ -95,7 +96,7 @@ func Test_resourceOrdering_order(t *testing.T) {
 	}, {
 		name: "dependencies on multiple resources",
 		ro: resourceOrdering{
-			m: map[string]resourceTuple{
+			m: map[string]Tuple{
 				"t.foo": {
 					Type:         "t",
 					Name:         "foo",
@@ -112,7 +113,7 @@ func Test_resourceOrdering_order(t *testing.T) {
 				},
 			},
 		},
-		want: []*resourceTuple{
+		want: []*Tuple{
 			{
 				Type: "t",
 				Name: "baz",
@@ -129,7 +130,7 @@ func Test_resourceOrdering_order(t *testing.T) {
 	}, {
 		name: "dependencies on multiple resources w/ duplicate names",
 		ro: resourceOrdering{
-			m: map[string]resourceTuple{
+			m: map[string]Tuple{
 				"t.foo": {
 					Type:         "t",
 					Name:         "foo",
@@ -146,7 +147,7 @@ func Test_resourceOrdering_order(t *testing.T) {
 				},
 			},
 		},
-		want: []*resourceTuple{
+		want: []*Tuple{
 			{
 				Type: "t",
 				Name: "baz",
