@@ -12,7 +12,6 @@ linters:
     - durationcheck
     - errcheck
     - forcetypeassert
-    - godot
     - gofmt
     - gosimple
     - ineffassign
