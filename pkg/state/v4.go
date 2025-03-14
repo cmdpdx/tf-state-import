@@ -11,6 +11,7 @@ type V4 struct {
 }
 
 type Resource struct {
+	Module    string
 	Mode      string
 	Type      string
 	Name      string

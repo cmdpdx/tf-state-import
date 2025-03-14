@@ -9,34 +9,95 @@ import (
 	"sync"
 
 	"golang.org/x/exp/maps"
+
+	"github.com/cmdpdx/tf-state-import/pkg/state"
 )
 
 type ResourceMap map[string]Tuple
 
 type Tuple struct {
+	Module       string
 	Type         string
 	Name         string
 	ID           string
 	IndexKey     interface{}
 	Dependencies []string
+	Attributes   map[string]interface{}
 }
 
-// Address is the unique friendly name of a resource as {Type}.{Name}.
+// FromState returns a map of resource name to ResourceTuple from the given state struct.
+func FromState(state state.V4, provider string) ResourceMap {
+	rm := make(map[string]Tuple, len(state.Resources))
+	for _, r := range state.Resources {
+		if r.Mode == "data" {
+			continue
+		}
+		if provider != "" && !strings.Contains(r.Provider, provider) {
+			continue
+		}
+		for _, inst := range r.Instances {
+			rawID, ok := inst.Attributes["id"]
+			if !ok {
+				// Resource doesn't have ID attribute
+				continue
+			}
+			id, ok := rawID.(string)
+			if !ok {
+				// Resource ID wasn't a string
+				continue
+			}
+			t := Tuple{
+				Module:       r.Module,
+				Type:         r.Type,
+				Name:         r.Name,
+				ID:           id,
+				IndexKey:     inst.IndexKey,
+				Dependencies: inst.Dependencies,
+				Attributes:   inst.Attributes,
+			}
+			rm[t.Address()] = t
+		}
+	}
+
+	return rm
+}
+
+// Address is the unique friendly name of a resource as [{Module}.]{Type}.{Name}.
 // This address matches the format found in Dependencies.
 // resources defined with `for_each` have an index key and are
 // addressed as {Type}.{Name}["{Index key}"]
 func (r Tuple) Address() string {
-	if r.IndexKey != nil {
-		switch v := r.IndexKey.(type) {
-		case int:
-			return fmt.Sprintf("%s.%s[%d]", r.Type, r.Name, v)
-		case string:
-			return fmt.Sprintf("%s.%s[\"%s\"]", r.Type, r.Name, v)
-		default:
-			return fmt.Sprintf("%s.%s", r.Type, r.Name)
-		}
+	a := fmt.Sprintf("%s.%s", r.Type, r.Name)
+	if r.Module != "" {
+		a = fmt.Sprintf("%s.%s", r.Module, a)
 	}
-	return fmt.Sprintf("%s.%s", r.Type, r.Name)
+
+	switch v := r.IndexKey.(type) {
+	case int, float64:
+		return fmt.Sprintf("%s[%v]", a, v)
+	case string:
+		return fmt.Sprintf("%s[\"%s\"]", a, v)
+	default:
+		return a
+	}
+}
+
+// ImportableID returns the id as expected by terraform to import the resource.
+// For most resources, this is just the id as listed in the state file.
+// However, there are some special cases that can be handled here.
+func (r Tuple) ImportableID() string {
+	switch {
+	case r.Type == "google_project_iam_member":
+		// TODO: condition
+		return fmt.Sprintf("%s %s %s", r.Attributes["project"], r.Attributes["role"], r.Attributes["member"])
+	case strings.HasSuffix(r.Type, "_iam_member"):
+		return fmt.Sprintf("%s %s %s", r.Attributes["name"], r.Attributes["role"], r.Attributes["member"])
+	case r.Type == "google_storage_bucket_iam_binding":
+		// TODO: condition
+		return fmt.Sprintf("%s %s", strings.TrimPrefix(r.Attributes["bucket"].(string), "b/"), r.Attributes["role"])
+	default:
+		return r.ID
+	}
 }
 
 type resourceOrdering struct {
