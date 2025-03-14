@@ -13,14 +13,21 @@ are removed from most dependent to least dependant resource, and imported in the
 $ go install .
 
 # Run with no flags to look in the current directory for terraform.tfstate
-# and output the commands to stdout.
 $ tf-state-import
 terraform state rm resource_foo.name
 terraform state rm resource_bar.name
 ...
-terraform state import resource_bar.name
-terraform state import resource_foo.name
+terraform state import resource_bar.name bar_id
+terraform state import resource_foo.name foo_id
 
-# Optionally pass the location of a statefile and an output script file.
-$ tf-state-import --tfstate=/path/to/statefile.tfstate --out=/path/to/script/import.sh
+# Generate terraform import blocks 
+$ tf-state-import --tfstate=/path/to/statefile.tfstate --format=block
+import {
+  to = resource_foo.name
+  id = foo_id
+}
+import {
+  to = resource_bar.name
+  id = bar_id
+}
 ```

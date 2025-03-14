@@ -94,6 +94,7 @@ func (r Tuple) ImportableID() string {
 		return fmt.Sprintf("%s %s %s", r.Attributes["name"], r.Attributes["role"], r.Attributes["member"])
 	case r.Type == "google_storage_bucket_iam_binding":
 		// TODO: condition
+		//nolint:forcetypeassert // we know bucket is a string
 		return fmt.Sprintf("%s %s", strings.TrimPrefix(r.Attributes["bucket"].(string), "b/"), r.Attributes["role"])
 	default:
 		return r.ID
