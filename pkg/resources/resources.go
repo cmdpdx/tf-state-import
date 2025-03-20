@@ -96,6 +96,8 @@ func (r Tuple) ImportableID() string {
 		// TODO: condition
 		//nolint:forcetypeassert // we know bucket is a string
 		return fmt.Sprintf("%s %s", strings.TrimPrefix(r.Attributes["bucket"].(string), "b/"), r.Attributes["role"])
+	case r.Type == "google_secret_manager_secret_iam_member":
+		return fmt.Sprintf("%s %s %s", r.Attributes["secret_id"], r.Attributes["role"], r.Attributes["member"])
 	default:
 		return r.ID
 	}
