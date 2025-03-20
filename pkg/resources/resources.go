@@ -90,14 +90,14 @@ func (r Tuple) ImportableID() string {
 	case r.Type == "google_project_iam_member":
 		// TODO: condition
 		return fmt.Sprintf("%s %s %s", r.Attributes["project"], r.Attributes["role"], r.Attributes["member"])
+	case r.Type == "google_secret_manager_secret_iam_member":
+		return fmt.Sprintf("%s %s %s", r.Attributes["secret_id"], r.Attributes["role"], r.Attributes["member"])
 	case strings.HasSuffix(r.Type, "_iam_member"):
 		return fmt.Sprintf("%s %s %s", r.Attributes["name"], r.Attributes["role"], r.Attributes["member"])
 	case r.Type == "google_storage_bucket_iam_binding":
 		// TODO: condition
 		//nolint:forcetypeassert // we know bucket is a string
 		return fmt.Sprintf("%s %s", strings.TrimPrefix(r.Attributes["bucket"].(string), "b/"), r.Attributes["role"])
-	case r.Type == "google_secret_manager_secret_iam_member":
-		return fmt.Sprintf("%s %s %s", r.Attributes["secret_id"], r.Attributes["role"], r.Attributes["member"])
 	default:
 		return r.ID
 	}

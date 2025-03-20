@@ -250,6 +250,71 @@ func Test_resourceOrdering_order(t *testing.T) {
 	}
 }
 
+func TestTupleImportableID(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		t    Tuple
+		want string
+	}{{
+		name: "google_project_iam_member",
+		t: Tuple{
+			Type: "google_project_iam_member",
+			Attributes: map[string]interface{}{
+				"project": "my-project",
+				"member":  "member",
+				"role":    "role",
+			},
+		},
+		want: "my-project role member",
+	}, {
+		name: "google_secret_manager_secret_iam_member",
+		t: Tuple{
+			Type: "google_secret_manager_secret_iam_member",
+			Attributes: map[string]interface{}{
+				"secret_id": "my-secret",
+				"member":    "member",
+				"role":      "role",
+			},
+		},
+		want: "my-secret role member",
+	}, {
+		name: "google_foo_iam_member",
+		t: Tuple{
+			Type: "google_foo_iam_member",
+			Attributes: map[string]interface{}{
+				"name":   "name",
+				"member": "member",
+				"role":   "role",
+			},
+		},
+		want: "name role member",
+	}, {
+		name: "google_storage_bucket_iam_binding",
+		t: Tuple{
+			Type: "google_storage_bucket_iam_binding",
+			Attributes: map[string]interface{}{
+				"bucket": "b/my-bucket",
+				"role":   "role",
+			},
+		},
+		want: "my-bucket role",
+	}, {
+		name: "default",
+		t: Tuple{
+			Type: "foo_resource",
+			ID:   "foo-id",
+		},
+		want: "foo-id",
+	}} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.t.ImportableID()
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Error("importableID() return mismatch (-want, +got):", diff)
+			}
+		})
+	}
+}
+
 func TestFromState(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
